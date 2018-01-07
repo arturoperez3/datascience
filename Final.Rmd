@@ -1,0 +1,140 @@
+---
+title: "Final Project on Framingham"
+author: "Hunter Manhart and Arturo Perez"
+date: "December 5, 2017"
+output: html_document
+---
+
+##Load library and data
+We need the glmnet package
+```{r, eval=FALSE}
+install.packages("glmnet", repos = "http://cran.us.r-project.org")
+```
+
+Then load it in
+```{r, message=FALSE, warning=FALSE}
+library(glmnet)
+```
+
+Now get the Framingham data (make sure frm.csv is in the same directory)
+```{r, eval=T}
+framingham <- read.csv("frm.csv")
+```
+
+Let's glance at how the data is organized
+```{r, eval=T}
+str(framingham)
+```
+
+
+##Divide and scale data
+Get the titles of the columns of data
+```{r}
+fnames=names(framingham)
+fnames
+```
+
+Split into factors and events
+```{r}
+FactorNames=fnames[seq(1,24)]
+EventNames=fnames[seq(25,40)]
+```
+
+Scale the factored data
+```{r}
+fhscaled<-framingham
+fhscaled[FactorNames]<-as.data.frame(scale(framingham[FactorNames]))
+str(fhscaled)
+```
+
+
+##Mortality
+
+How common was death
+```{r}
+sum(framingham['DEATH'])
+```
+
+Let's isolate the data of those who died
+```{r, eval=T}
+deaths<-subset(framingham, DEATH==1)
+eventTimes<-c('TIMEMI','TIMEMIFC','TIMECHD','TIMESTRK','TIMECVD','TIMEDTH','TIMEHYP')
+plot(deaths[eventTimes])
+```
+```{r}
+events<-setdiff(eventTimes,cbind("TIMEDTH"))
+x<-as.matrix(deaths[events])
+y<-as.matrix(deaths$TIMEDTH)
+str(x)
+str(y)
+fit <- cv.glmnet(x, y, alpha=1)  #alpha=1 is lasso, alpha=0 is ridge, lambda =0 is linear regression
+plot(fit)
+```
+```{r}
+beta<-coef(fit,s=2.718^-4)
+beta
+```
+
+
+##Isolate to Third Period
+```{r}
+nacols<-apply(framingham, 2, function(x) {sum(is.na(x))})
+nacols
+```
+
+```{r}
+fnamesKeep <- setdiff(fnames,cbind("HDLC", "LDLC","GLUCOSE"))
+fhs.noHLG<-fhscaled[fnamesKeep]
+fhs.noHLG<-fhs.noHLG[complete.cases(fhs.noHLG),]
+str(fhs.noHLG)
+```
+
+```{r}
+thirdPeriod <-subset(fhscaled, PERIOD>1)
+thirdPeriod <- thirdPeriod[complete.cases(thirdPeriod),]
+str(thirdPeriod)
+```
+
+##Logistic Regression
+```{r}
+x <- as.matrix(thirdPeriod[FactorNames])
+y <- as.matrix(thirdPeriod$HYPERTEN)
+
+fit = glmnet(x, y, family = "binomial")
+plot(fit)
+
+vnat=coef(fit)
+vnat=vnat[-1,ncol(vnat)] # remove the intercept, and get the coefficients at the end of the path
+axis(4, at=vnat,line=-.5,label=colnames(x),las=1,tick=FALSE, cex.axis=0.5)
+```
+
+
+```{r}
+fkeep <- setdiff(FactorNames, 'DIABETES')
+x <- as.matrix(thirdPeriod[fkeep])
+
+diabetes <-subset(framingham, PERIOD==3)
+diabetes <- diabetes[complete.cases(diabetes),]
+y <- as.matrix(diabetes$DIABETES)
+fit = glmnet(x, y, family = "binomial")
+plot(fit)
+
+vnat=coef(fit)
+vnat=vnat[-1,ncol(vnat)] # remove the intercept, and get the coefficients at the end of the path
+axis(4, at=vnat,line=-.5,label=colnames(x),las=1,tick=FALSE, cex.axis=0.5)
+```
+
+```{r}
+beta<-coef(fit,s=2.718^-6)
+beta
+```
+
+##Compare to linear regression
+```{r}
+linear = glmnet(x,y, alpha=0)
+plot(linear)
+
+vnat=coef(linear)
+vnat=vnat[-1,ncol(vnat)] # remove the intercept, and get the coefficients at the end of the path
+axis(4, at=vnat,line=-.5,label=colnames(x),las=1,tick=FALSE, cex.axis=0.5)
+```
